@@ -1,55 +1,37 @@
----
-title: "Case Study 2 - Talent Attrition and Income"
-author: "By Neil Benson"
-date: "08/05/2020"
-output: html_document 
----
- 
+title: "Case Study 2 - Talent Attrition and Income"  
+author: "By Neil Benson"  
+date: "08/05/2020"  
+
 ## Predicting attrition and income prepared for DDSAnalytics. 
 In order to provide DDSAnalytics with a competetitive edge in Talent Management, we will optimize a classification Naive Bayes model to predict attrition first, and will finish up optimizing a linear regressio model to predict income. In the following explored and analyzed datasets provided by DDSAnalytics. odeling, used linear regression for initial variable selection, but trained and optimized the Naive Bayes classifation models using Naive Bayes.
 
 ## Importing the necessary libraries
-```{r,warning=FALSE,message=FALSE}
-library(ggthemes)
-library(dplyr) 
-library(tidyverse)
-library(forcats)
-library(naniar)
-library(corrplot)
-library(imputeTS)
-library(e1071)
-library(caret)
-library(rpart)
-library(formula.tools)
-library(modelr)
-library(psych)
-library(gridExtra)
-library(ggplot2)
-library(grid)
-library(stringr)
-library(hash)
-library(tidyverse)
-```
+
+* library(ggthemes)
+* library(dplyr) 
+* library(tidyverse)
+* library(forcats)
+* library(naniar)
+* library(corrplot)
+* library(imputeTS)
+* library(e1071)
+* library(caret)
+* library(rpart)
+* library(formula.tools)
+* library(modelr)
+* library(psych)
+* library(gridExtra)
+* library(ggplot2)
+* library(grid)
+* library(stringr)
+* library(hash)
+* library(tidyverse)
+
   
   
 ## Importing and Cleaning the Data
-Taking a quick look at the structure of the data and addressing missing values. As there weren't any missing data, nor any columns with anything out of the ordinary, we did not cleanse or impute data. 
-```{r,fig.height=6, fig.width=9,echo=FALSE,warning=FALSE,message=FALSE}
-########### Loading the data
-talent <- read.csv("C:/Git/msds/ds6306/CaseStudy2DDS/data/CaseStudy2-data.csv")
-
-# reviewing the structure of the data
-str(talent)
-
-# drop unneeded columns
-drop.cols <- c("EmployeeCount","EmployeeNumber","Over18","StandardHours")
-talentcleanedDF <- talent %>% select(-one_of(drop.cols))
-
-
-# checking for missing values in the data
-vis_miss(talentcleanedDF) + xlab("Data Columns")
-```
-  
+Data was cleaned and imputed as needed
+ 
   
 ## Overall Profile of Attritioned Employees
 We've created an overall profile of employee churn. Attritioned employees are characterized by lower monthly income, younger, further from home, with fewer total working years, fewer years at company, fewer years in current role, slightly fewer years with current manager, and fewer stock options.
@@ -82,109 +64,24 @@ Profile of Attrition:
 |Sales Representative		|2.70					|$2,653				|4						|3					|2						|1								|2                       |
   
   
-```{r message=FALSE, warning=FALSE}
-# group similar columns together
-colstomove <- c("MonthlyIncome", "MonthlyRate", "DailyRate", "HourlyRate")
-talentcleanedDF <- talentcleanedDF %>% select(-colstomove,all_of(colstomove))
-
-
-# compare like or similar column types to reduce number of columns
-talentcleanedDF$monthlyhours <- talentcleanedDF$MonthlyIncome/talentcleanedDF$MonthlyRate
-
-
-# split the dataframe into those who attritioned and those who did not to create a general overal profile of the two
-attrittioned <- talentcleanedDF %>% filter(Attrition == "Yes")
-nonattrittioned <- talentcleanedDF %>% filter(Attrition == "No")
-countattritioned <- nrow(attrittioned)
-
-
-# overall profile of attrition vs nonattritrion employees
-profile <- function (dataframe) {
-  # this function returns the median value for any numeric column and the mode (or most occuring) for the chr/str columns 
-  
-  dfnames <- colnames(dataframe)
-  outputdf <- data.frame()[1,]
-  
-  for(name in dfnames){
-
-    if (class(dataframe[ , name ]) == 'integer' | class(dataframe[ , name ]) == 'numeric') 
-      { 
-        outputdf[ , sprintf("%s_median", name) ] <- median(dataframe[ , name])
-      } 
-    else
-      { 
-        # get the most occuring from a chr column, similar to numerical mode
-        x <- c(dataframe[ , name])
-        tt <- table(x)
-        outputdf[ , sprintf("%s_mode", name) ] <- names(tt[tt==max(tt)])
-      }
-  }
- outputdf[ , "Profile"] <- deparse(substitute(dataframe))
- return(outputdf)
-}
-
-
-# get an overall profile for those who have attritione and those who have not
-profiledf <- rbind(profile(attrittioned), profile(nonattrittioned))
-profiledf <- profiledf %>% select("Profile", everything())
-```
-  
-  
 ## Checking the Balance of the Data
 Because of the imbalance in employee churn, we will later downsample to balance the data to train our models.
-```{r,echo=FALSE,warning=FALSE,message=FALSE}
 
-print(talentcleanedDF %>% count(talentcleanedDF$Attrition))
-```  
   
 ## Exploring Colinearity in Numerical Variables  
-There is a degree of correlation between Total Working Years and Monthly Income of .78, and Total Working Years and Age, however we will continue to explore these variables. Most of the numerical explanatory variables have a right skew, and are not overly linearly related. 
-
-```{r, fig.height=9, fig.width=9}
-# sorting the columns so that Atrrition column is first
-talentcleanedDF <- talentcleanedDF %>% select("ID", "Attrition", everything())
+Next we explored the colinearity of numerical values within the dataset.
 
 
-corvars = c("Age", "DistanceFromHome", "NumCompaniesWorked", "PercentSalaryHike", "TotalWorkingYears", "TrainingTimesLastYear", "YearsAtCompany", "YearsInCurrentRole", "YearsSinceLastPromotion", "YearsWithCurrManager", "MonthlyIncome", "MonthlyRate", "monthlyhours", "DailyRate", "HourlyRate")
-
-
-# check for correlation of numerical independent variables
-pairs.panels(talentcleanedDF[,corvars])
-```
-  
-  
 ## Transformations for Analysis
-We do see that TotaWorkingYears, PercentSalaryHike, YearsAtCompany, YearsInCurrentRoll, YearsSinceLastPromotion, MonthlyIncome, monthlyhours are heavily right skewed. We log2 transform these variables for our analysis. We tested our models with a log2 transformation on these variables, but did not see any increase in model performance, and abandoned the transformations.
-```{r}
-# transformin heavily right skewed variables
-
-# colstolog <- c("TotalWorkingYears", "PercentSalaryHike", "YearsAtCompany", "YearsInCurrentRole", "YearsSinceLastPromotion", "MonthlyIncome", "monthlyhours", "DistanceFromHome")
-# 
-# for (col in colstolog)
-# {
-#   talentcleanedDF[col] <- log(talentcleanedDF[col] + 1,2)
-# }
-```
+When analyzing colinearity, we noticed several attributes that could benefit from transformation, however upon further analysis, the transformations did not help in model building or optimization.
   
   
 ## Numerical Density by Attrition
 When looking at the overlap of density, monthly hours, training time last year, and years since last promotion do not seem to uniquely identify individuals who might attrition, however may still be used to identify individuals in the model. More exploration is needed.
-```{r, fig.height=6, fig.width=9}
-# reshapeing the data to review the density of each numerical variable by attrition
-talent_reshaped <- data.frame(Attrition = talentcleanedDF$Attrition,independent.variable = c(talentcleanedDF$Age,talentcleanedDF$DistanceFromHome,talentcleanedDF$NumCompaniesWorked,talentcleanedDF$PercentSalaryHike, talentcleanedDF$TotalWorkingYears, talentcleanedDF$TrainingTimesLastYear, talentcleanedDF$YearsAtCompany, talentcleanedDF$YearsInCurrentRole, talentcleanedDF$YearsSinceLastPromotion, talentcleanedDF$YearsWithCurrManager, talentcleanedDF$MonthlyIncome, talentcleanedDF$MonthlyRate, talentcleanedDF$monthlyhours, talentcleanedDF$DailyRate, talentcleanedDF$HourlyRate),
-Variable.name = rep(corvars,each=nrow(talentcleanedDF)))
 
-ggplot(talent_reshaped,aes(independent.variable,fill=Attrition)) + 
-geom_density(alpha=.7, color='black') + facet_wrap(~Variable.name,scales="free", ncol = 5) + 
-xlab("") + theme(legend.position='bottom') + theme(axis.title.y=element_blank(),
-        axis.text.y=element_blank(), axis.ticks.y=element_blank()) + ggtitle("Density by Independent Numerical Variables")
-
-```
-  
-  
   
 ## Factor Analysis:
-The top three most influential predictor factors for attrition in accordance with an F-test are:  
+The top three most influential predictor factors in the dataset for attrition in accordance with an F-test are:  
 
 * OverTime  
     * pvalue: < 8.45e-13  
@@ -195,54 +92,7 @@ The top three most influential predictor factors for attrition in accordance wit
 * JobLevel  
     * pvalue: 0.00108  
  
-  
-```{r}
-# convert categorical variables to factors
-names <- c("WorkLifeBalance", "StockOptionLevel", "RelationshipSatisfaction", "PerformanceRating", "OverTime", "MaritalStatus", "JobSatisfaction", "JobLevel", "JobInvolvement", "Gender", "EnvironmentSatisfaction", "BusinessTravel", "Attrition", "Education", "Department", "EducationField", "JobRole")
-
-# downsampling to balance attrition
-set.seed(43)
-      
-
-# sampling the data for non-attrititoned
-sampleIndices <- sample(seq(1:length(nonattrittioned[,1])),countattritioned)
-nonattrittionedsampleDF<- nonattrittioned[sampleIndices,]
-
-talendcleanedsampleDF <- rbind(nonattrittionedsampleDF, attrittioned)
-
-
-# set the categorical columns to factor
-for (name in names)
-{
-  talendcleanedsampleDF[,name]<-factor(talendcleanedsampleDF[,name])
-}
-
-# convert factors to numeric for factor analysis
-talentcleanedASNUMDF <- talendcleanedsampleDF[,names] %>% mutate_all(as.numeric)
-
-# adding suffix ASNUM to numerical representation of factors columns
-colnames(talentcleanedASNUMDF) <- paste(colnames(talentcleanedASNUMDF), "ASNUM", sep = "_")
-
-# adding numerical factor columns to base Df in order to perform stepwise for variable selection
-talentcleanedwnumDF <- cbind(talendcleanedsampleDF, talentcleanedASNUMDF)
-
-# dropping factor columns
-talentcleanedwnumDF <- talentcleanedwnumDF[, sapply(talentcleanedwnumDF, class) != "factor"]
-
-#  columns for anova factor analysis
-anovacols <- c(colnames(talentcleanedASNUMDF))
-anovacols <- anovacols[anovacols != "Attrition_ASNUM"]
-
-#  creating the formula to pass into aov function
-anovafmla <- as.formula(paste("Attrition_ASNUM ~ ", paste(anovacols, collapse= "+")))
-
-anova_fit <- aov(anovafmla, data=talentcleanedwnumDF)
-
-summary(anova_fit)
-```
-  
-  
-  
+   
 ## Modeling and Optimization
 Variable selection using forward, backward, and stepwise linear models. We have converted all factorial columns to numerical to proceed and compared the outputs of each of these models against the summary of the ANOVA table from reviewing top 3 factors.
 
@@ -283,361 +133,11 @@ And we will premilinarily move forward without the following variables, as they 
 |PerformanceRating			    |0.54334     		|
 |Education				        	|0.59587	     	|
 |Gender					          	|0.9745	    		|  
-  
-```{r,warning=FALSE,message=FALSE}
 
-# creating my own not in operator
-`%notin%` <- Negate(`%in%`)
 
-# remove ID and attrition from col list to build formula
-# columns for anova factor analysis
-lmcols <- c(colnames(talentcleanedwnumDF))
-lmcols <- lmcols[lmcols %notin% c("Attrition_ASNUM","ID")]
-lmfmla <- as.formula(paste("Attrition_ASNUM ~ ", paste(lmcols, collapse= "+")))
-
-# define intercept-only model
-intercept_only_model <- lm(Attrition_ASNUM ~ 1, data = talentcleanedwnumDF)
-
-# define total model
-total_model <- lm(lmfmla, data = talentcleanedwnumDF)
-
-# set the different models
-talent_back_model <- step(total_model, 
-                          direction = "backward", trace=FALSE)
-
-talent_step_model <- step(intercept_only_model, 
-                          direction = "both", scope = formula(total_model), trace=FALSE)
-
-talent_fwd_model <- step(intercept_only_model, 
-                         direction = "forward", scope = formula(total_model), trace=FALSE)
-```
-#### Summary of the First Backward Model
-```{r,echo=FALSE,warning=FALSE,message=FALSE}
-summary(talent_back_model)
-```
-#### Summary of the First Stepwise Model
-```{r,echo=FALSE,warning=FALSE,message=FALSE}
-summary(talent_step_model)
-```
-#### Summary of the First Forward Model
-```{r,echo=FALSE,warning=FALSE,message=FALSE}
-summary(talent_fwd_model)
-```
-  
-  
 ## Further Refining the Model
 We felt that the models from stepwise, forward and backward were not sufficient. We then added and subtracted columns to further refine the model.
-```{r,warning=FALSE,message=FALSE}
 
-# remove ID and attrition from col list to build formula columns for anova factor analysis. This a list of all variables that were considered significant (p-value < 0.05) and are expected to be indluded in the model as minimum.
-mincols <- c("JobInvolvement_ASNUM","JobSatisfaction_ASNUM","MaritalStatus_ASNUM","NumCompaniesWorked","OverTime_ASNUM","StockOptionLevel_ASNUM","YearsSinceLastPromotion","JobLevel_ASNUM","TotalWorkingYears","YearsWithCurrManager")
+## Fine Tuning the Models
+The models we originally were working with were not meeting our specs, so we a function called modelOptimization to test various different combinations of predictor variables. We finally settled on a Naive Bayes classification model for Attrition before moving onto predicting income. For predicting income we created a function called modelPredictions that optimized variables in linear regression models to predict income. After many tests and optimizations we settled on a Naive Bayes classification model for Attrition and a Linear Regression model for income. In the end we ran them both against unlabeled data sets to score our models.
 
-mincols <- mincols[mincols %notin% c("Attrition_ASNUM","ID")]
-minfmla <- as.formula(paste("Attrition_ASNUM ~ ", paste(mincols, collapse= "+")))
-
-#define minimum model
-min_model <- lm(minfmla, data = talentcleanedwnumDF)
-
-# additional columns to review
-addcols <- c("JobRole_ASNUM","RelationshipSatisfaction_ASNUM","WorkLifeBalance_ASNUM")
-
-allcols <- c(mincols, addcols)
-allfmla <- as.formula(paste("Attrition_ASNUM ~ ", paste(allcols, collapse= "+")))
-
-#define total model
-total_model <- lm(allfmla, data = talentcleanedwnumDF)
-
-# set the different models
-talent_back_new_model <- step(total_model, 
-                          direction = "backward", scope = c(min_model,total_model), trace=FALSE)
-
-talent_step_new_model <- step(min_model, 
-                          direction = "both", scope = c(min_model,total_model), trace=FALSE)
-
-talent_fwd_new_model <- step(min_model, 
-                         direction = "forward", scope = c(min_model,total_model), trace=FALSE)
-```
-  
-  
-#### Summary of a Newer Backward Model
-```{r,echo=FALSE,warning=FALSE,message=FALSE}
-summary(talent_back_new_model)
-```
-  
-  
-#### Summary of a Newer Stepwise Model
-```{r,echo=FALSE,warning=FALSE,message=FALSE}
-summary(talent_step_new_model)
-```
-
-
-#### Summary of a Newer Forward Model
-```{r,echo=FALSE,warning=FALSE,message=FALSE}
-summary(talent_fwd_new_model)
-```
-  
-  
-  
-## Quick Model Check
-The linear models that are a result forward, backward, and stepwise linear regression for variable selection have not met the minimum requirements of at least 60% sensitivity and specificity and need additional refinement. We will to return our list of predictor variables that are of significance. We have created a function to train and test the data. 
-
-Here we are cross validating our models on a 70/30 train/test split using a model optimization function. The function trains each model on attrition based on the predictor variables we pass it, and then tests it. It returns the accuracy, sensitivity, and specificity of each model. We will use this function to evaulate all our variations of models for NB classification.  
-```{r}
-fwd_fmla_cols <- as.vector(strsplit(gsub("_ASNUM", "", Reduce(paste, deparse(talent_fwd_new_model[["terms"]][[3]]))), " +")[[1]])
-step_fmla_cols <- as.vector(strsplit(gsub("_ASNUM", "", Reduce(paste, deparse(talent_step_new_model[["terms"]][[3]]))), " +")[[1]])
-back_fmla_cols <- as.vector(strsplit(gsub("_ASNUM", "", Reduce(paste, deparse(talent_fwd_new_model[["terms"]][[3]]))), " +")[[1]])
-
-fwd_fmla_cols <- c(fwd_fmla_cols[fwd_fmla_cols %notin% c("+")])
-step_fmla_cols <- c(step_fmla_cols[step_fmla_cols %notin% c("+")])
-back_fmla_cols <- c(back_fmla_cols[back_fmla_cols %notin% c("+")])
-
-fwdflma <- as.formula(paste("Attrition ~ ", paste(fwd_fmla_cols, collapse= "+")))
-stpflma <- as.formula(paste("Attrition ~ ", paste(step_fmla_cols, collapse= "+")))
-bwdflma <- as.formula(paste("Attrition ~ ", paste(back_fmla_cols, collapse= "+")))
-
-
-# function to train and then test the model given variables in a dataframe. Returns accuracy, sensitivity, and specificity of the test data set
-modelOptimization <- function(fmla, dataframe, cols){
-      # this function splits the dataframe, trains the model on the training set,
-      # and runs the training model on the test. It returns the accuracy, sensitivity,
-      # and specificity for each model as a named list 
-  
-      # convert attrition to binary
-      dataframe$Attrition[dataframe$Attrition == 1] <- "Yes"
-      dataframe$Attrition[dataframe$Attrition == 0] <- "No"
-      
-      # starting cross validation of the model
-
-      # split the date into training and test data
-      trainIndices = sample(seq(1:length(dataframe[,1])),round(.7*length(dataframe[,1])))
-      talent_train = dataframe[trainIndices,]
-      talent_test = dataframe[-trainIndices,]
-      
-      # training the Naive Bayes classification model
-      talent_test_model = naiveBayes(fmla,data = talent_train)
-      
-      # testing the model's prediction
-      test_pred_val <- as.data.frame(predict(talent_test_model,talent_test[, cols, drop=FALSE],type="raw"))
-      talent_test$pred_no <- test_pred_val$No
-      talent_test$pred_yes <- test_pred_val$Yes
-      talent_test$pred_attrition = ifelse(talent_test$pred_yes > talent_test$pred_no,"Yes","No")
-      
-      # create table for the confusion matrix
-      cmtable <- table(talent_test$pred_attrition,talent_test$Attrition)
-      
-      # if there are missing rows (if the model has only predicted all yes or all no)
-      # then append yes or no row of 0's
-      if(nrow(cmtable) < 2) {
-        if ("Yes" %in% rownames(cmtable))
-          {
-            cmtable <- as.table(rbind(cmtable, No=as.integer(c(0, 0))))
-
-          }
-        else
-          {
-            cmtable <- as.table(rbind(cmtable, Yes=as.integer(c(0, 0))))
-          }
-      }
-      
-      CM = confusionMatrix(cmtable)
-      
-      returnlist <- c(CM$overall["Accuracy"], CM$byClass["Sensitivity"], CM$byClass["Specificity"])
-      return(list(returnlist))
-      
-}
-```
-  
-  
-## Summary of Models from Optimization
-#### A Newer Enhancement of the Forward Model
-The fwdflma model appears to meet our minimum requirements. We will keep this but we see if we can improve.
-Of all the models tested, this one provides the best balance of accuracy, sensitivity, and specificity!
-```{r}
-fwdflma
-```
-```{r, echo=FALSE}
-modelOptimization(fwdflma, talendcleanedsampleDF, fwd_fmla_cols)
-
-```
-  
-  
-#### A Newer Enhancement of the Stepwise Model
-```{r}
-stpflma
-```
-```{r, echo=FALSE}
-modelOptimization(stpflma, talendcleanedsampleDF, step_fmla_cols)
-
-```
-  
-  
-#### A Newer Enhancement of the Backward Model
-```{r}
-bwdflma
-```
-```{r, echo=FALSE}
-modelOptimization(bwdflma, talendcleanedsampleDF, back_fmla_cols)
-
-```
-  
-  
-#### Testing Out a Fuller Model
-```{r, echo=FALSE}
-
-allnewcols <- gsub("_ASNUM", "", allcols)
-allnewfmla <- as.formula(paste("Attrition ~ ", paste(allnewcols, collapse= "+")))
-```
-```{r}
-allnewfmla
-```
-```{r, echo=FALSE}
-modelOptimization(allnewfmla, talendcleanedsampleDF, allnewcols)
-```
-  
-  
-## Predicting Income
-```{r}
-
-inccols <- colnames(talendcleanedsampleDF)
-inccols <- inccols[inccols %notin% c("MonthlyIncome", "ID")]
-
-
-modelPredictions <- function(dataframe, independent){
-      # this function loops through the columns of a dataframe to find the least RMSE. It returns a list of models that are below 3000 for RMSE, along with their columns that have p-value less than .05. 
-      cols <- colnames(dataframe)
-      cols <- cols[cols %notin% c(independent, "ID", "monthlyhours")]
-      i = 1
-      testcols <- c()
-      
-      returndf <- data.frame(i=integer(),
-                 RMSE=double(),
-                 fmla=character(),
-                 predvars=character(),
-                 stringsAsFactors=FALSE)
-      
-      for(col in cols)
-      {
-        testcols <- c(testcols,col)
-        fmla <- as.formula(paste(independent, " ~ ", paste(testcols, collapse= "+")))
-        model <- lm(fmla, data=dataframe)
-        RSS <-  c(crossprod(model$residuals))
-        MSE <- RSS / length(model$residuals)
-        RMSE <- sqrt(MSE)
-       
-        if (RMSE < 3000)
-        { 
-           hashdict <- hash(c(summary(model)$coefficients[,4]))
-           vars <- keys(hashdict)
-           pvalues <- values(hashdict)
-           pvaldf <- as.data.frame(cbind(vars, pvalues))
-           throw_away <- pvaldf %>% filter(pvalues < .05)
-           lastcol <- list(throw_away["vars"])
-           returndf <- returndf %>% add_row(i=i, RMSE=RMSE, fmla=deparse(fmla), predvars= paste( unlist(lastcol), collapse=','))
-        }
-        
-        i = i + 1
-        
-      }
-    return(returndf)
-}
-      
-incomeModelsDF <- modelPredictions(talendcleanedsampleDF,"MonthlyIncome")
-incomdModelsReducedDF <- incomeModelsDF %>% group_by(predvars) %>% summarise(n())
-
-
-# 1	Age,BusinessTravel,Education
-# 2	BusinessTravel
-# 3	BusinessTravel,DailyRate,Education,TotalWorkingYears
-# 4	BusinessTravel,Education,TotalWorkingYears
-# 5	JobLevel
-
-testcols <- c("MonthlyIncome","Age","BusinessTravel","JobLevel","DailyRate","Education","TotalWorkingYears")  
-
-testcols <- c("MonthlyIncome","Age","BusinessTravel","JobLevel","Education","TotalWorkingYears") 
-
-modelPredictions(talendcleanedsampleDF[,testcols],"MonthlyIncome")
-
-
-model <- lm(MonthlyIncome ~ Age + BusinessTravel + JobLevel + Education + TotalWorkingYears, data=talendcleanedsampleDF)  
-
-# final income prediction model: 
-# MonthlyIncome ~ Age + BusinessTravel + JobLevel + Education + TotalWorkingYears
-
-# Business Travel was included as it reduces RMSE and increase Adjusted R^2, however we fail to reject H0 that its coefficient is different from 0.
-
-summary(model)
-```
-  
-  
-  
-## Creating the Prediction Outputs of Both Models
-```{r}
-
-# training the models on labeled data income data, and testing on unlabeled income data.
-
-talentIncomeDF <- read.csv("C:/Git/msds/ds6306/CaseStudy2DDS/data/CaseStudy2CompSet No Salary.csv")
-
-incomefactors <- c("BusinessTravel", "JobLevel", "Education")
-
-# set the categorical columns to factor
-for (factor in incomefactors)
-{
-  talentIncomeDF[,factor]<-factor(talentIncomeDF[,factor])
-}
-
-
-incomeCols <- c("Age", "BusinessTravel", "JobLevel", "Education", "TotalWorkingYears")
-
-incomefmla <- as.formula(paste("MonthlyIncome", " ~ ", paste(incomeCols, collapse= "+")))
-
-# training the model
-incomeModel <- lm(incomefmla, data=talendcleanedsampleDF)
-
-
-# testing the model's prediction
-talentIncomeDF$MonthlyIncome <- predict(incomeModel,newdata = talentIncomeDF)
-
-talentIncomeDF$MonthlyIncome <- as.integer(talentIncomeDF$MonthlyIncome)
-
-
-talentIncomeDF <- talentIncomeDF %>% select(c("ID","MonthlyIncome"))
-write.csv(talentIncomeDF, file = "C:/Git/msds/ds6306/CaseStudy2DDS/data/Case2PredictionsBenson Salary.csv", row.names=FALSE)
-
-
-
-# attrition model testing
-talentAttritionDF <- read.csv("C:/Git/msds/ds6306/CaseStudy2DDS/data/CaseStudy2CompSet No Attrition.csv")
-
-
-attritionfactors <- c("StockOptionLevel", "OverTime", "MaritalStatus", "JobSatisfaction", "JobLevel", "JobInvolvement")
-
-
-# set the categorical columns to factor
-for (factor in attritionfactors)
-{
-  talentAttritionDF[,factor]<-factor(talentAttritionDF[,factor])
-}
-
-# add in monthlyhours
-talentAttritionDF$monthlyhours <- talentAttritionDF$MonthlyIncome/talentAttritionDF$MonthlyRate
-
-attritionCols <- c("JobInvolvement", "JobSatisfaction", "MaritalStatus", "NumCompaniesWorked", "OverTime", "StockOptionLevel", "YearsSinceLastPromotion", "JobLevel", "TotalWorkingYears", "YearsWithCurrManager")
-
-
-attritionfmla <- as.formula(paste("Attrition", " ~ ", paste(attritionCols, collapse= "+")))
-
-# training the model
-attritionModel <- naiveBayes(attritionfmla,data = talendcleanedsampleDF)
-
-
-# testing the model's prediction
-test_pred_val <- as.data.frame(predict(attritionModel,talentAttritionDF[, attritionCols, drop=FALSE],type="raw"))
-talentAttritionDF$pred_no <- test_pred_val$No
-talentAttritionDF$pred_yes <- test_pred_val$Yes
-talentAttritionDF$Attrition = ifelse(talentAttritionDF$pred_yes > talentAttritionDF$pred_no,"Yes","No")
-
-
-talentAttritionDF <- talentAttritionDF %>% select(c("ID","Attrition"))
-write.csv(talentAttritionDF, file = "C:/Git/msds/ds6306/CaseStudy2DDS/data/Case2PredictionsBenson Attrition.csv", row.names=FALSE)
-
-```
