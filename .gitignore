@@ -1,2 +1,6 @@
+.gitignore
+.vscode/launch.json
+.vscode/settings.json
 /home/bensonnd/msds/ds7333/case_study_3/Data2/*
 /home/bensonnd/msds/ds7333/case_study_3/Data/*
+/home/bensonnd/msds/ds7337/.ipynb_checkpoints*
